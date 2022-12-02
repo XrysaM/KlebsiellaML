@@ -32,7 +32,9 @@ library(dplyr)
 testk_9 <- slice_sample(k_9_test2[,-c(1:3)], n = 60 ) #keep common_species_names and kmers
 
 #PCA - dimensionality reduction
-pca <- prcomp(k_9_test2[,-c(1:3)] , scale = TRUE)
+k_9_test <- k_9_test2[,-c(1:3)]
+rownames(k_9_test)
+pca <- prcomp(k_9_test , scale = TRUE)
 #plot
 plot(pca$x[,1], pca$x[,2])
 ## make a scree plot
@@ -43,11 +45,13 @@ barplot(pca.var.per, main="Scree Plot", xlab="Principal Component", ylab="Percen
 #doesnt work :(
 library(ggplot2)
 
-pca.data <- data.frame(Sample=rownames(pca$x), X=pca$x[,1], Y=pca$x[,2])
+pca.data <- data.frame( X=pca$x[,1], Y=pca$x[,2], 
+                        Samples = rownames(k_9_test)) 
 pca.data
 
-ggplot(data=pca.data, aes(x=X, y=Y, label=Sample)) +
-  geom_text() +
+hosts <- factor(k_9_test$common_species_names)
+ggplot(data=pca.data, aes(x=X, y=Y, label=Samples, colour= hosts)) +
+  geom_point() +
   xlab(paste("PC1 - ", pca.var.per[1], "%", sep="")) +
   ylab(paste("PC2 - ", pca.var.per[2], "%", sep="")) +
   theme_bw() +
@@ -57,9 +61,9 @@ ggplot(data=pca.data, aes(x=X, y=Y, label=Sample)) +
 loading_scores <- pca$rotation[,1]
 gene_scores <- abs(loading_scores) ## get the magnitudes
 gene_score_ranked <- sort(gene_scores, decreasing=TRUE)
-top_10_genes <- names(gene_score_ranked[1:10])
+top_kmers <- names(gene_score_ranked[1:10]) #how many kmers i want
 
-top_10_genes ## show the names of the top 10 genes
+top_kmers ## show the names of the top 10 genes
 
-pca$rotation[top_10_genes,1] ## show the scores (and +/- sign)
+pca$rotation[top_kmers,1] ## show the scores (and +/- sign)
 
