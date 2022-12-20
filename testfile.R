@@ -1,6 +1,7 @@
 #diafora tests
 ########################
 #save and test to csv file
+
 #these are the boruta selected features (with and without tentatives)
 host_categories <- k_9_test$host_categories
 k_9_tent <- cbind(host_categories, k_9_test[,c(boruta_signif)])
@@ -14,20 +15,7 @@ write_csv(k_9_fix, path="k_9_noTent.csv" )
 
 #######
 #encoders
-rm(k_9_test)
-k_9_test <- k_9[65:85, 3:4 ]
-
-#simple
-k_9_test$host_categories <- as.numeric(factor(k_9_test$host_categories)) #den 3erw poies times einai poio host
-
-#works 
-k_9_test$host_categories <- as.factor(k_9_test$host_categories)
-k_9_test$common_species_names <- as.factor(k_9_test$common_species_names)
-k_9_test <- data.frame(k_9_test)
-k_9_test$host_categories <- encode_ordinal(k_9_test[,1,drop=FALSE], order = c('human','birds', 'pig'), out.int = TRUE)
-k_9_test$common_species_names <- encode_ordinal(k_9_test[,2,drop=FALSE], order = c('human','turkey', 'pig'), out.int = TRUE)
-
-#the best 
+ 
 #encoders -- alphabetical order
 library(CatEncoders)
 #encode common_species_names 
@@ -46,6 +34,16 @@ list <- unique(inverse.transform(lab, k_9$host_categories))
 ogvalues_host_categories <- list[order(unlist(list))]
 ogvalues_host_categories
 
+#change back
+k_9_fix$host_categories[k_9_fix$host_categories == '1'] <- 'birds'
+k_9_fix$host_categories[k_9_fix$host_categories == '2'] <- 'cat'
+k_9_fix$host_categories[k_9_fix$host_categories == '3'] <- 'cattle'
+k_9_fix$host_categories[k_9_fix$host_categories == '4'] <- 'dog'
+k_9_fix$host_categories[k_9_fix$host_categories == '5'] <- 'grey-headed_flying_fox'
+k_9_fix$host_categories[k_9_fix$host_categories == '6'] <- "horse"
+k_9_fix$host_categories[k_9_fix$host_categories == '7'] <- 'human'
+k_9_fix$host_categories[k_9_fix$host_categories == '8'] <- 'pig'
+k_9_fix$host_categories <- as.factor(k_9_fix$host_categories)
 
 #smaller sample size for testing
 library(dplyr)
@@ -63,21 +61,26 @@ plot_correlation(k_9_test) #too many var - 128gb
 #############
 #Variable Importance from Machine Learning Algorithms
 #den xwrane 
-install.packages("caret")
+#install.packages("caret")
 library(caret)
+#varimp rpart
 set.seed(100)
-rPartMod <- train(host_categories ~ ., data=k_9_test, method="rpart")
+rPartMod <- train(host_categories ~ ., data=k_9_fix, method="rpart")
 rpartImp <- varImp(rPartMod)
 print(rpartImp)
-
+plot(rpartImp, top = 15, main='Variable Importance')
+#varimp random forest
 set.seed(100)
-rrfMod <- train(Class ~ ., data=trainData, method="RRF")
-rrfImp <- varImp(rrfMod, scale=F)
-rrfImp
+rfMod <- train(host_categories ~ ., data=k_9_fix, method="rf")
+rfImp <- varImp(rfMod)
+rfImp
+plot(rfImp, top = 20, main='Variable Importance')
+
+
+
 
 #####################
 #Recursive Feature Elimination (RFE)
-#takes too long to run 
 library(caret)
 library("randomForest")
 control <- rfeControl(functions = rfFuncs, # random forest
@@ -85,9 +88,9 @@ control <- rfeControl(functions = rfFuncs, # random forest
                       repeats = 5, # number of repeats
                       number = 10) # number of folds
 # Features
-x <- k_9_test[,-c(1)]
+x <- k_9_fix[,-c(1)]
 # Target variable
-y <-  as.factor(k_9_test$host_categories)
+y <-  as.factor(k_9_fix$host_categories)
 # Training: 80%; Test: 20%
 set.seed(2021)
 inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
@@ -99,7 +102,7 @@ y_test  <- y[-inTrain]
 # Run RFE
 result_rfe1 <- rfe(x = x_train, 
                    y = y_train, 
-                   sizes = c(32768), #65536, 98304), 
+                   sizes = c(50,100,150,200,250,300,350,400,450), 
                    rfeControl = control)
 # Print the results
 result_rfe1
@@ -109,6 +112,17 @@ predictors(result_rfe1)
 ggplot(data = result_rfe1, metric = "Accuracy") + theme_bw()
 ggplot(data = result_rfe1, metric = "Kappa") + theme_bw()
 
+varimp_data <- data.frame(feature = row.names(varImp(result_rfe1))[1:469],
+                          importance = varImp(result_rfe1)[1:469, 1])
+ggplot(data = varimp_data, 
+       aes(x = reorder(feature, -importance), y = importance, fill = feature)) +
+  geom_bar(stat="identity") + labs(x = "Features", y = "Variable Importance") + 
+  geom_text(aes(label = round(importance, 2)), vjust=1.6, color="white", size=4) + 
+  theme_bw() + theme(legend.position = "none")
+
+# Post prediction
+postResample(predict(result_rfe1, x_test), y_test)
+
 
 ############
 #Ridge, Lasso, Elastic-Net
@@ -116,9 +130,9 @@ library(glmnet)
 library(caret)
 set.seed(42) 
 # Features
-x <- model.matrix(host_categories~. , k_9_temp)[,-1] #memory issues 
+x <- model.matrix(host_categories~. , k_9_fix)[,-1] #memory issues 
 # Target variable
-y <- k_9_test$host_categories
+y <- k_9_fix$host_categories
 # Training: 80%; Test: 20%
 set.seed(2021)
 inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
@@ -127,6 +141,7 @@ x.test  <- x[-inTrain, ]
 y.train <- y[ inTrain]
 y.test  <- y[-inTrain]
 
+#ta mean den douleuoun
 
 #just Ridge
 alpha0.fit <- cv.glmnet(x.train, y.train, type.measure="deviance", 
@@ -178,6 +193,8 @@ for (i in 0:10) {
 results
 
 
+
+
 ##############################
 #Random Forest try
 library(ggplot2)
@@ -185,42 +202,49 @@ library(cowplot)
 library(randomForest)
 set.seed(42)
 
-k_9_test$host_categories <- as.factor(k_9_test$host_categories)
-#do i need this?
-#data.imputed <- rfImpute(host_categories ~ ., data = k_9_test, iter=6) 
-
-model <- randomForest(host_categories ~ ., data=k_9_test, proximity=TRUE)
+k_9_fix$host_categories <- as.factor(k_9_fix$host_categories)
+model <- randomForest(host_categories ~ ., data=k_9_fix, proximity=TRUE)
 model
 
+#plot a df of the error rates to check for different ntree
 oob.error.data <- data.frame(
   Trees=rep(1:nrow(model$err.rate), times=3),
-  Type=rep(c("OOB", "Healthy", "Unhealthy"), each=nrow(model$err.rate)),
-  Error=c(model$err.rate[,"OOB"], 
-          model$err.rate[,"Healthy"], 
-          model$err.rate[,"Unhealthy"]))
+  Type=rep(c("OOB", "birds", "cat", "cattle", "dog", "grey-headed_flying_fox",
+             "horse","human", "pig"), each=nrow(model$err.rate)),
+  Error=c(model$err.rate[,"OOB"], model$err.rate[,"birds"],
+          model$err.rate[,"cat"], model$err.rate[,"cattle"],
+          model$err.rate[,"dog"], model$err.rate[,"grey-headed_flying_fox"],
+          model$err.rate[,"horse"], model$err.rate[,"human"],
+          model$err.rate[,"pig"]))
 
 ggplot(data=oob.error.data, aes(x=Trees, y=Error)) +
   geom_line(aes(color=Type))
 
+#this is to try different ntrees
+#model <- randomForest(host_categories ~ ., data=k_9_fix, ntree=1500, proximity=TRUE)
+#model
 
-## If we want to compare this random forest to others with different values for
-## mtry (to control how many variables are considered at each step)...
+#number of mtry("No. of var tried at each split") 
+#try 1-10
 oob.values <- vector(length=10)
 for(i in 1:10) {
-  temp.model <- randomForest(hd ~ ., data=data.imputed, mtry=i, ntree=1000)
+  temp.model <- randomForest(host_categories ~ ., data=k_9_fix, mtry=i, ntree=1000)
   oob.values[i] <- temp.model$err.rate[nrow(temp.model$err.rate),1]
 }
-oob.values
+oob.values #oob err.rates for 1-10 mtry
 ## find the minimum error
 min(oob.values)
-## find the optimal value for mtry...
 which(oob.values == min(oob.values))
-## create a model for proximities using the best value for mtry
-model <- randomForest(hd ~ ., 
-                      data=data.imputed,
-                      ntree=1000, 
+
+
+## final model for proximities using the best ntree and the best mtry
+model <- randomForest(host_categories ~ ., 
+                      data=k_9_fix,
+                      ntree=1000,
                       proximity=TRUE, 
                       mtry=which(oob.values == min(oob.values)))
+model
+
 
 
 ## Now let's create an MDS-plot to show how the samples are related to each 
@@ -239,7 +263,7 @@ mds.values <- mds.stuff$points
 mds.data <- data.frame(Sample=rownames(mds.values),
                        X=mds.values[,1],
                        Y=mds.values[,2],
-                       Status=data.imputed$hd)
+                       Status=k_9_fix$host_categories)
 
 ggplot(data=mds.data, aes(x=X, y=Y, label=Sample)) + 
   geom_text(aes(color=Status)) +
@@ -247,4 +271,3 @@ ggplot(data=mds.data, aes(x=X, y=Y, label=Sample)) +
   xlab(paste("MDS1 - ", mds.var.per[1], "%", sep="")) +
   ylab(paste("MDS2 - ", mds.var.per[2], "%", sep="")) +
   ggtitle("MDS plot using (1 - Random Forest Proximities)")
-# ggsave(file="random_forest_mds_plot.pdf")
