@@ -69,6 +69,8 @@ rPartMod <- train(host_categories ~ ., data=k_9_fix, method="rpart")
 rpartImp <- varImp(rPartMod)
 print(rpartImp)
 plot(rpartImp, top = 15, main='Variable Importance')
+
+
 #varimp random forest
 set.seed(100)
 rfMod <- train(host_categories ~ ., data=k_9_fix, method="rf")
@@ -114,11 +116,15 @@ ggplot(data = result_rfe1, metric = "Kappa") + theme_bw()
 
 varimp_data <- data.frame(feature = row.names(varImp(result_rfe1))[1:469],
                           importance = varImp(result_rfe1)[1:469, 1])
-ggplot(data = varimp_data, 
+ggplot(data = varimp_data[1:30,], 
        aes(x = reorder(feature, -importance), y = importance, fill = feature)) +
-  geom_bar(stat="identity") + labs(x = "Features", y = "Variable Importance") + 
-  geom_text(aes(label = round(importance, 2)), vjust=1.6, color="white", size=4) + 
-  theme_bw() + theme(legend.position = "none")
+  geom_bar(stat="identity") + 
+  labs(x = "Features", y = "Variable Importance", 
+       title = "RFE Feature Importance [top 30]") + 
+  geom_text(aes(label = round(importance, 2)), vjust=1.6, size=4) + 
+  theme_bw() + theme(legend.position = "none") +
+  scale_x_discrete(guide = guide_axis(n.dodge = 3)) 
+
 
 # Post prediction
 postResample(predict(result_rfe1, x_test), y_test)
@@ -193,81 +199,97 @@ for (i in 0:10) {
 results
 
 
+###########
 
+#Recursive Feature Elimination (RFE)
+#check tent(700)
+library(caret)
+library("randomForest")
+control <- rfeControl(functions = rfFuncs, # random forest
+                      method = "repeatedcv", # repeated cv
+                      repeats = 5, # number of repeats
+                      number = 10) # number of folds
 
-##############################
-#Random Forest try
-library(ggplot2)
-library(cowplot)
-library(randomForest)
-set.seed(42)
+# Features
+a <- list(199,1000,5000,10000)
+host_categories <- k_9_test$host_categories
+for(n in a){
+  Subsets <- list(k_9_fix,k_9_tent)
+  for(j in 1:10){
+    b <- cbind(host_categories, k_9_test[,sample(1:ncol(k_9_test),n)])
+    b <-list(b)
+    Subsets <-append(Subsets,b)
+  }
 
-k_9_fix$host_categories <- as.factor(k_9_fix$host_categories)
-model <- randomForest(host_categories ~ ., data=k_9_fix, proximity=TRUE)
-model
-
-#plot a df of the error rates to check for different ntree
-oob.error.data <- data.frame(
-  Trees=rep(1:nrow(model$err.rate), times=3),
-  Type=rep(c("OOB", "birds", "cat", "cattle", "dog", "grey-headed_flying_fox",
-             "horse","human", "pig"), each=nrow(model$err.rate)),
-  Error=c(model$err.rate[,"OOB"], model$err.rate[,"birds"],
-          model$err.rate[,"cat"], model$err.rate[,"cattle"],
-          model$err.rate[,"dog"], model$err.rate[,"grey-headed_flying_fox"],
-          model$err.rate[,"horse"], model$err.rate[,"human"],
-          model$err.rate[,"pig"]))
-
-ggplot(data=oob.error.data, aes(x=Trees, y=Error)) +
-  geom_line(aes(color=Type))
-
-#this is to try different ntrees
-#model <- randomForest(host_categories ~ ., data=k_9_fix, ntree=1500, proximity=TRUE)
-#model
-
-#number of mtry("No. of var tried at each split") 
-#try 1-10
-oob.values <- vector(length=10)
-for(i in 1:10) {
-  temp.model <- randomForest(host_categories ~ ., data=k_9_fix, mtry=i, ntree=1000)
-  oob.values[i] <- temp.model$err.rate[nrow(temp.model$err.rate),1]
+  feat_acc <- data.frame(set=numeric(), 
+                          variables=numeric(),
+                          Accuracy=numeric(), 
+                          Kappa=numeric())
+  b <- 1 
+    
+  for(i in Subsets){
+    x <- i[,-c(1)]
+    y <- as.factor(i$host_categories)
+    set.seed(2021)
+    inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
+    x_train <- x[ inTrain, ]
+    x_test  <- x[-inTrain, ]
+    y_train <- y[ inTrain]
+    y_test  <- y[-inTrain]
+    
+    # Run RFE
+    result_rfe <- rfe(x = x_train, 
+                      y = y_train, 
+                      sizes = seq(50,ncol(i),by=100),#posa apo ta features na parei
+                      rfeControl = control)
+    result_rfe
+    for(j in 1:nrow(result_rfe$results) ){
+      feat_acc[nrow(feat_acc)+1, ] <-c(ncol(i), 
+                                       result_rfe$results$Variables[j],
+                                       result_rfe$results$Accuracy[j], 
+                                       result_rfe$results$Kappa[j])
+      }
+    
+    b <- b+1
+  }
 }
-oob.values #oob err.rates for 1-10 mtry
-## find the minimum error
-min(oob.values)
-which(oob.values == min(oob.values))
+
+#Plots 
+No_of_Variables=as.factor(feat_acc$variables)
+Size_of_Subset=as.factor(feat_acc$set)
+
+#Accuracy line
+ggplot(data=feat_acc, aes(x=No_of_Variables, y=Accuracy, group=Size_of_Subset))+
+  geom_line(aes(color=Size_of_Subset),linewidth=1.5)+
+  geom_point()+
+  scale_color_brewer(palette="Set1")+
+  theme_bw()+
+  labs(color = "Size of Dataset")+
+  labs(caption = "470=after Tentative fix, \n 730=before Tentative fix")+
+  ggtitle("Accuracy per number of Variables")
+
+#Kappa line
+ggplot(data=feat_acc, aes(x=No_of_Variables, y=Kappa, group=Size_of_Subset))+
+  geom_line(aes(color=Size_of_Subset),linewidth=1.5)+
+  geom_point()+
+  theme_bw()+
+  labs(color = "Size of Dataset")+
+  labs(caption = "470=after Tentative fix, \n 730=before Tentative fix")+
+  ggtitle("Kappa per number of Variables")
+
+#Accuracy boxplot
+ggplot(data=feat_acc, aes( x=Size_of_Subset, y=Accuracy))+
+  geom_boxplot(lwd=1,aes(color=Size_of_Subset)) + 
+  geom_dotplot(binaxis='y', stackdir='center',dotsize=1,binwidth = 0.001)+
+  theme_bw()+
+  labs(caption = "470=after Boruta fix, \n 730=before Tentative fix")+
+  labs(x = "Size of Dataset")+
+  ggtitle("Accuracy per subset of Variables")
+  
 
 
-## final model for proximities using the best ntree and the best mtry
-model <- randomForest(host_categories ~ ., 
-                      data=k_9_fix,
-                      ntree=1000,
-                      proximity=TRUE, 
-                      mtry=which(oob.values == min(oob.values)))
-model
 
+# Post prediction
+postResample(predict(result_rfe, x_test), y_test)
 
-
-## Now let's create an MDS-plot to show how the samples are related to each 
-## other.
-##
-## Start by converting the proximity matrix into a distance matrix.
-distance.matrix <- as.dist(1-model$proximity)
-
-mds.stuff <- cmdscale(distance.matrix, eig=TRUE, x.ret=TRUE)
-
-## calculate the percentage of variation that each MDS axis accounts for...
-mds.var.per <- round(mds.stuff$eig/sum(mds.stuff$eig)*100, 1)
-
-## now make a fancy looking plot that shows the MDS axes and the variation:
-mds.values <- mds.stuff$points
-mds.data <- data.frame(Sample=rownames(mds.values),
-                       X=mds.values[,1],
-                       Y=mds.values[,2],
-                       Status=k_9_fix$host_categories)
-
-ggplot(data=mds.data, aes(x=X, y=Y, label=Sample)) + 
-  geom_text(aes(color=Status)) +
-  theme_bw() +
-  xlab(paste("MDS1 - ", mds.var.per[1], "%", sep="")) +
-  ylab(paste("MDS2 - ", mds.var.per[2], "%", sep="")) +
-  ggtitle("MDS plot using (1 - Random Forest Proximities)")
+#rm(list= c("control", "x", "x_train", "inTrain", "y", "y_test","y_train"))

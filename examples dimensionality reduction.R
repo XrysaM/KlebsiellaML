@@ -9,7 +9,7 @@ library(CatEncoders)
 k_9_saved <- k_9_fix
 lab = LabelEncoder.fit(k_9_fix$host_categories)
 k_9_fix$host_categories = transform(lab, k_9_fix$host_categories)
-#dixnei tis arxikes times
+#deixnei tis arxikes times
 list <- unique(inverse.transform(lab, k_9_fix$host_categories))
 ogvalues_host_categories <- list[order(unlist(list))]
 ogvalues_host_categories
