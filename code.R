@@ -9,7 +9,6 @@
 #####
 library(readr)
 k_9_og <- read_csv("k_9_total_for_classification.csv") #.
-k_9 <- k_9_og #.
 rm(k_9_og)   #call read_csv again if you want original(saves space)
 
 #k_9_test <- k_9[,-c(1:3)]     #keep only common_species_names and kmers
@@ -36,7 +35,7 @@ plot_bar(k_9_test)
 #install.packages('Boruta')
 library(Boruta)
 k_9_test$host_categories <- as.factor(k_9_test$host_categories)
-boruta_output <- Boruta(host_categories ~ ., data=k_9_test, doTrace=1)
+boruta_output <- Boruta(host_categories ~ ., data=k_9_test, doTrace=2)
 names(boruta_output)
 # Get significant variables including tentatives
 boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
@@ -75,6 +74,84 @@ rfImp
 plot(rfImp, top = 20, main='Variable Importance')
 
 
+#########
+
+#Recursive Feature Elimination (RFE)
+#use this to find best subset of features 
+#given the boruta output and random subsets of various sizes
+library(caret)
+library("randomForest")
+control <- rfeControl(functions = rfFuncs, # random forest
+                      method = "repeatedcv", # repeated cv
+                      repeats = 5, # number of repeats
+                      number = 10) # number of folds
+
+# Features
+a <- list(199,1000,5000,10000)
+host_categories <- k_9_test$host_categories
+for(n in a){
+  Subsets <- list(k_9_fix,k_9_tent)
+  for(j in 1:10){
+    b <- cbind(host_categories, k_9_test[,sample(1:ncol(k_9_test),n)])
+    b <-list(b)
+    Subsets <-append(Subsets,b)
+  }
+  
+  feat_acc <- data.frame(set=numeric(), 
+                         variables=numeric(),
+                         Accuracy=numeric(), 
+                         Kappa=numeric())
+  b <- 1 
+  
+  for(i in Subsets){
+    x <- i[,-c(1)]
+    y <- as.factor(i$host_categories)
+    set.seed(2021)
+    inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
+    x_train <- x[ inTrain, ]
+    x_test  <- x[-inTrain, ]
+    y_train <- y[ inTrain]
+    y_test  <- y[-inTrain]
+    
+    # Run RFE
+    result_rfe <- rfe(x = x_train, 
+                      y = y_train, 
+                      sizes = seq(50,ncol(i),by=100),#posa apo ta features na parei
+                      rfeControl = control)
+    result_rfe
+    for(j in 1:nrow(result_rfe$results) ){
+      feat_acc[nrow(feat_acc)+1, ] <-c(ncol(i), 
+                                       result_rfe$results$Variables[j],
+                                       result_rfe$results$Accuracy[j], 
+                                       result_rfe$results$Kappa[j])
+    }
+    
+    b <- b+1
+  }
+}
+
+#Plots 
+No_of_Variables=as.factor(feat_acc$variables)
+Size_of_Subset=as.factor(feat_acc$set)
+
+#Accuracy boxplot
+ggplot(data=feat_acc, aes( x=Size_of_Subset, y=Accuracy))+
+  geom_boxplot(lwd=1,aes(color=Size_of_Subset)) + 
+  geom_dotplot(binaxis='y', stackdir='center',dotsize=1,binwidth = 0.001)+
+  theme_bw()+
+  labs(caption = "470=after Boruta fix, \n 730=before Tentative fix")+
+  labs(x = "Size of Dataset")+
+  ggtitle("Accuracy per subset of Variables")
+
+
+
+
+# Post prediction
+postResample(predict(result_rfe, x_test), y_test)
+
+#rm(list= c("control", "x", "x_train", "inTrain", "y", "y_test","y_train"))
+
+
 #####
 
 #Random Forest 
@@ -107,20 +184,20 @@ oob.values <- vector(length=150)
 error.mtry <- data.frame(Trees=numeric(), Error=numeric())
 a <- 0
 for(y in c(500,1000,1500)){
-   c <- 0
-   for(i in 1:50) {
-     temp.model <- randomForest(host_categories ~ ., data=k_9_fix, mtry=i, ntree=y)
-     c <- i + a
-     oob.values[c] <- temp.model$err.rate[nrow(temp.model$err.rate),1]#the oob err at 500 trees
-     error.mtry[c,] <- c(y,oob.values[c])
-   }
-   a <- a+50
+  c <- 0
+  for(i in 1:50) {
+    temp.model <- randomForest(host_categories ~ ., data=k_9_fix, mtry=i, ntree=y)
+    c <- i + a
+    oob.values[c] <- temp.model$err.rate[nrow(temp.model$err.rate),1]#the oob err at 500 trees
+    error.mtry[c,] <- c(y,oob.values[c])
+  }
+  a <- a+50
 }
 No_of_trees <-as.factor(error.mtry$Trees)
 ggplot(data=error.mtry, aes( x=No_of_trees, y=Error))+
-   geom_boxplot() + 
-   geom_dotplot(binaxis='y', stackdir='center',dotsize=0.5,binwidth = 0.001)
- 
+  geom_boxplot() + 
+  geom_dotplot(binaxis='y', stackdir='center',dotsize=0.5,binwidth = 0.001)
+
 
 #find which mtry&tree have the min error
 min_error<-min(error.mtry$Error)
@@ -128,16 +205,16 @@ pos <- as.numeric(which(error.mtry$Error == min_error))
 #if more than 1 mtry have min error
 #pick the last
 if(length(pos)>1){
-   pos <- pos[length(pos)]
+  pos <- pos[length(pos)]
 }
 best_trees <- error.mtry$Trees[pos]
 
 #this is for printing the right mtry 
 if(pos>50){
-   min_mtry <- pos - 50
+  min_mtry <- pos - 50
 } else {
-   min_mtry <- pos
-   }
+  min_mtry <- pos
+}
 #print 
 min_mtry 
 min_error
@@ -152,6 +229,8 @@ model <- randomForest(host_categories ~ .,
                       mtry=min_mtry)
 model
 
+#varimp
+model$importance[order(model$importance[,1],decreasing=TRUE),]
 
 #####
 
@@ -179,84 +258,91 @@ ggplot(data=mds.data, aes(x=X, y=Y, label=Sample)) +
 
 
 
-#####
 
-#Recursive Feature Elimination (RFE)
-#use this to find best subset of features 
 
-library(caret)
-library("randomForest")
-control <- rfeControl(functions = rfFuncs, # random forest
-                      method = "repeatedcv", # repeated cv
-                      repeats = 5, # number of repeats
-                      number = 10) # number of folds
+######
+#One vs all Random Forest classifier
 
-# Features
-a <- list(small=k_9_fix,big=k_9_tent)#dokimase na to baleis kateu8eian
-b <- 1 
-feat_acc <- data.frame(subset    = numeric(), 
-                       variables = numeric(),
-                       Accuracy  = numeric(), 
-                       Kappa     = numeric())
-for(i in a){
-  x <- i[,-c(1)]
-  y <- as.factor(i$host_categories)
-  set.seed(2021)
-  inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
-  x_train <- x[ inTrain, ]
-  x_test  <- x[-inTrain, ]
-  y_train <- y[ inTrain]
-  y_test  <- y[-inTrain]
+fix <- k_9_fix #test
+hosts <- unique(k_9_fix$host_categories)
+hosts <- as.character(hosts)
+datalist <- data.frame(Host = character(),Trees=numeric(), Error=numeric())
+ovaimp <- list()  #to save the variables' importance
+for (i in 1:8){
+  fix$host_categories <- ifelse(k_9_fix$host_categories==hosts[i],hosts[i],"other")
+  fix$host_categories <- as.factor(fix$host_categories)
+  model <- randomForest(host_categories ~ ., data=fix, proximity=TRUE)
+  print(model)
   
-  # Run RFE
-  result_rfe <- rfe(x = x_train, 
-                    y = y_train, 
-                    sizes = seq(50,ncol(i),by=50),
-                    rfeControl = control)
-  result_rfe
-  for(j in 1:nrow(result_rfe$results) ){
-    feat_acc[nrow(feat_acc)+1, ] <-c(ncol(i), 
-                                     result_rfe$results$Variables[j],
-                                     result_rfe$results$Accuracy[j], 
-                                     result_rfe$results$Kappa[j])
+  error.mtry <- data.frame(Host = character(), Trees=numeric(), Error=numeric())
+  a <- 0
+  for(y in c(500,1000)){
+    c <- 0
+    for(j in 1:20) {
+      model <- randomForest(host_categories ~ ., data=fix, mtry=j, ntree=y)
+      c <- j + a
+      error.mtry[c,] <- c(hosts[i],
+                          y,
+                          model$err.rate[nrow(model$err.rate),1])
+      #the oob err at max trees
+    }
+    a <- a+20
   }
-  # Post prediction
-  postResample(predict(result_rfe, x_test), y_test)
+  datalist <- rbind(datalist, error.mtry)
   
-  b <- b+1
+  #find which mtry&tree have the min error
+  min_error <- min(error.mtry$Error)
+  pos <- which(error.mtry$Error == min_error)
+  
+  #if more than 1 mtry have min error
+  #pick the first
+  best_trees <- as.numeric(error.mtry$Trees[pos[1]])
+  
+  #this is for printing the right mtry 
+  if(pos[1]>20){
+    min_mtry <- pos[1] - 20
+  } else {
+    min_mtry <- pos[1]
+  }
+  ## final model for proximities using the best ntree and the best mtry
+  model <- randomForest(host_categories ~ ., 
+                        data=fix,
+                        ntree=best_trees,
+                        proximity=TRUE, 
+                        mtry=min_mtry)
+  print(model)
+  
+  #varimp
+  #a list of the top 20 most important k-mers for each host
+  ovaimp[i] <- list(model$importance[order(model$importance[,1],decreasing=TRUE),][1:20])
 }
-#Plots 
-No_of_Variables=as.factor(feat_acc$variables)
-Size_of_Subset=as.factor(feat_acc$subset)
+#name the list
+ovaimp <- setNames(ovaimp, hosts)
+#plot the imp features 
+for(i in 1:8){
+  barplot(ovaimp[[i]],horiz = TRUE,las=1, 
+          main=paste("Most important features -", names(ovaimp[i])), 
+          xlab="Mean Decrease Gini") 
+}
 
-#Accuracy line
-ggplot(data=feat_acc, aes(x=No_of_Variables, y=Accuracy, group=Size_of_Subset))+
-  geom_line(aes(color=Size_of_Subset),linewidth=1.5)+
-  geom_point()+
-  scale_color_brewer(palette="Set1")+
-  theme_bw()+
-  labs(color = "Size of Dataset")+
-  labs(caption = "470=after Tentative fix, \n 730=before Tentative fix")+
-  ggtitle("Accuracy per number of Variables")
+datalist$Error <- as.numeric(datalist$Error)
+datalist$Trees <- as.numeric(datalist$Trees)
+No_of_trees <-as.factor(datalist$Trees)
+ggplot(data=datalist, aes( x=Host, y=Error, fill= No_of_trees))+
+  geom_boxplot()+
+  ggtitle("One vs Rest classification -  
+          OOB error rate per host for 500 and 1000 trees")
 
-#Kappa line
-ggplot(data=feat_acc, aes(x=No_of_Variables, y=Kappa, group=Size_of_Subset))+
-  geom_line(aes(color=Size_of_Subset),linewidth=1.5)+
-  geom_point()+
-  theme_bw()+
-  labs(color = "Size of Dataset")+
-  labs(caption = "470=after Tentative fix, \n 730=before Tentative fix")+
-  ggtitle("Kappa per number of Variables")
-
-#Accuracy boxplot
-ggplot(data=feat_acc, aes( x=Size_of_Subset, y=Accuracy))+
-  geom_boxplot() + 
-  geom_dotplot(binaxis='y', stackdir='center',dotsize=0.75,binwidth = 0.001)+
-  theme_bw()+
-  labs(caption = "470=after Boruta fix, \n 730=before Tentative fix")+
-  labs(x = "Size of Dataset")+
-  ggtitle("Accuracy per subset of Boruta-Variables")
-
-
-
+#keep only k-mers
+for(i in 1:8){
+  ovatest[[i]] <- names(ovatest[[i]])
+}
+#find what top kmers are the same between hosts
+for(i in 1:7){
+  for(j in (i+1):8){
+    x<-intersect(ovatest[[i]],ovatest[[j]])
+    if(identical(x,character(0))){next}
+    cat(names(ovatest[i]),names(ovatest[j]), x, "\n")
+  }
+}
 
