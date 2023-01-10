@@ -2,6 +2,7 @@
 ########################
 #save and test to csv file
 
+library(readr)
 #these are the boruta selected features (with and without tentatives)
 host_categories <- k_9_test$host_categories
 k_9_tent <- cbind(host_categories, k_9_test[,c(boruta_signif)])
@@ -9,9 +10,15 @@ k_9_fix <- cbind(host_categories, k_9_test[,c(boruta_no_Tent)])
 # Export DataFrame to CSV file
 write_csv(k_9_tent, path="k_9_withTent.csv" )
 write_csv(k_9_fix, path="k_9_noTent.csv" )
-#test <- read_csv("k_9_withTent.csv")
-#test$host_categories <- as.factor(test$host_categories)
+#import
+k_9_fix <- read_csv("k_9_noTent.csv")
+k_9_tent <- read_csv("k_9_withTent.csv")
+k_9_fix$host_categories <- as.factor(k_9_fix$host_categories)
+k_9_tent$host_categories <- as.factor(k_9_tent$host_categories)
 
+#change fox name 
+levels(k_9_fix$host_categories)[levels(k_9_fix$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
+levels(k_9_tent$host_categories)[levels(k_9_tent$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
 
 #######
 #encoders
@@ -39,7 +46,7 @@ k_9_fix$host_categories[k_9_fix$host_categories == '1'] <- 'birds'
 k_9_fix$host_categories[k_9_fix$host_categories == '2'] <- 'cat'
 k_9_fix$host_categories[k_9_fix$host_categories == '3'] <- 'cattle'
 k_9_fix$host_categories[k_9_fix$host_categories == '4'] <- 'dog'
-k_9_fix$host_categories[k_9_fix$host_categories == '5'] <- 'grey-headed_flying_fox'
+k_9_fix$host_categories[k_9_fix$host_categories == '5'] <- 'grey-headed_flying_fox' #or 'fox'
 k_9_fix$host_categories[k_9_fix$host_categories == '6'] <- "horse"
 k_9_fix$host_categories[k_9_fix$host_categories == '7'] <- 'human'
 k_9_fix$host_categories[k_9_fix$host_categories == '8'] <- 'pig'
@@ -202,7 +209,9 @@ results
 ###########
 
 #Recursive Feature Elimination (RFE)
-#check tent(700)
+#use this to find best subset of features 
+#given the output of boruta - 470 vs 730
+
 library(caret)
 library("randomForest")
 control <- rfeControl(functions = rfFuncs, # random forest
@@ -211,52 +220,42 @@ control <- rfeControl(functions = rfFuncs, # random forest
                       number = 10) # number of folds
 
 # Features
-a <- list(199,1000,5000,10000)
-host_categories <- k_9_test$host_categories
-for(n in a){
-  Subsets <- list(k_9_fix,k_9_tent)
-  for(j in 1:10){
-    b <- cbind(host_categories, k_9_test[,sample(1:ncol(k_9_test),n)])
-    b <-list(b)
-    Subsets <-append(Subsets,b)
+a <- list(small=k_9_fix,big=k_9_tent)#dokimase na to baleis kateu8eian
+b <- 1 
+feat_acc <- data.frame(subset    = numeric(), 
+                       variables = numeric(),
+                       Accuracy  = numeric(), 
+                       Kappa     = numeric())
+for(i in a){
+  x <- i[,-c(1)]
+  y <- as.factor(i$host_categories)
+  set.seed(2021)
+  inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
+  x_train <- x[ inTrain, ]
+  x_test  <- x[-inTrain, ]
+  y_train <- y[ inTrain]
+  y_test  <- y[-inTrain]
+  
+  # Run RFE
+  result_rfe <- rfe(x = x_train, 
+                    y = y_train, 
+                    sizes = seq(50,ncol(i),by=50),
+                    rfeControl = control)
+  result_rfe
+  for(j in 1:nrow(result_rfe$results) ){
+    feat_acc[nrow(feat_acc)+1, ] <-c(ncol(i), 
+                                     result_rfe$results$Variables[j],
+                                     result_rfe$results$Accuracy[j], 
+                                     result_rfe$results$Kappa[j])
   }
-
-  feat_acc <- data.frame(set=numeric(), 
-                          variables=numeric(),
-                          Accuracy=numeric(), 
-                          Kappa=numeric())
-  b <- 1 
-    
-  for(i in Subsets){
-    x <- i[,-c(1)]
-    y <- as.factor(i$host_categories)
-    set.seed(2021)
-    inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
-    x_train <- x[ inTrain, ]
-    x_test  <- x[-inTrain, ]
-    y_train <- y[ inTrain]
-    y_test  <- y[-inTrain]
-    
-    # Run RFE
-    result_rfe <- rfe(x = x_train, 
-                      y = y_train, 
-                      sizes = seq(50,ncol(i),by=100),#posa apo ta features na parei
-                      rfeControl = control)
-    result_rfe
-    for(j in 1:nrow(result_rfe$results) ){
-      feat_acc[nrow(feat_acc)+1, ] <-c(ncol(i), 
-                                       result_rfe$results$Variables[j],
-                                       result_rfe$results$Accuracy[j], 
-                                       result_rfe$results$Kappa[j])
-      }
-    
-    b <- b+1
-  }
+  # Post prediction
+  postResample(predict(result_rfe, x_test), y_test)
+  
+  b <- b+1
 }
-
 #Plots 
 No_of_Variables=as.factor(feat_acc$variables)
-Size_of_Subset=as.factor(feat_acc$set)
+Size_of_Subset=as.factor(feat_acc$subset)
 
 #Accuracy line
 ggplot(data=feat_acc, aes(x=No_of_Variables, y=Accuracy, group=Size_of_Subset))+
@@ -279,13 +278,93 @@ ggplot(data=feat_acc, aes(x=No_of_Variables, y=Kappa, group=Size_of_Subset))+
 
 #Accuracy boxplot
 ggplot(data=feat_acc, aes( x=Size_of_Subset, y=Accuracy))+
+  geom_boxplot() + 
+  geom_dotplot(binaxis='y', stackdir='center',dotsize=0.75,binwidth = 0.001)+
+  theme_bw()+
+  labs(caption = "470=after Boruta fix, \n 730=before Tentative fix")+
+  labs(x = "Size of Dataset")+
+  ggtitle("Accuracy per subset of Boruta-Variables")
+
+######
+# how to make a list of dataframes
+#datalist <- list()
+#for (i in 1:8){
+ # error.mtry <- data.frame(Trees=numeric(), Error=numeric())
+  #...
+ # datalist[i] <- list(error.mtry)
+#}
+#datalist <- setNames(datalist, hosts)
+
+#####
+
+#Recursive Feature Elimination (RFE)
+#use this to find best subset of features 
+#given the boruta output and random subsets of various sizes
+library(caret)
+library("randomForest")
+control <- rfeControl(functions = rfFuncs, # random forest
+                      method = "repeatedcv", # repeated cv
+                      repeats = 5, # number of repeats
+                      number = 10) # number of folds
+
+# Features
+#a <- list(199,1000,5000,10000)
+a<-c(199, 299)
+host_categories <- k_9_test$host_categories
+feat_acc <- data.frame(set=numeric(), 
+                       variables=numeric(),
+                       Accuracy=numeric(), 
+                       Kappa=numeric())
+for(n in a){
+  Subsets <- list(k_9_fix,k_9_tent)
+  for(j in 1:5){
+    b <- cbind(host_categories, k_9_test[,sample(1:ncol(k_9_test),n)])
+    b <-list(b)
+    Subsets <-append(Subsets,b)
+  }
+  
+  b <- 1 
+  
+  for(i in Subsets){
+    x <- i[,-c(1)]
+    y <- as.factor(i$host_categories)
+    set.seed(2021)
+    inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
+    x_train <- x[ inTrain, ]
+    x_test  <- x[-inTrain, ]
+    y_train <- y[ inTrain]
+    y_test  <- y[-inTrain]
+    
+    # Run RFE
+    result_rfe <- rfe(x = x_train, 
+                      y = y_train, 
+                      sizes = seq(50,ncol(i),by=100),#posa apo ta features na parei
+                      rfeControl = control)
+    result_rfe
+    for(j in 1:nrow(result_rfe$results) ){
+      feat_acc[nrow(feat_acc)+1, ] <-c(ncol(i), 
+                                       result_rfe$results$Variables[j],
+                                       result_rfe$results$Accuracy[j], 
+                                       result_rfe$results$Kappa[j])
+    }
+    
+    b <- b+1
+  }
+}
+
+#Plots 
+No_of_Variables=as.factor(feat_acc$variables)
+Size_of_Subset=as.factor(feat_acc$set)
+
+#Accuracy boxplot
+ggplot(data=feat_acc, aes( x=Size_of_Subset, y=Accuracy))+
   geom_boxplot(lwd=1,aes(color=Size_of_Subset)) + 
   geom_dotplot(binaxis='y', stackdir='center',dotsize=1,binwidth = 0.001)+
   theme_bw()+
   labs(caption = "470=after Boruta fix, \n 730=before Tentative fix")+
   labs(x = "Size of Dataset")+
   ggtitle("Accuracy per subset of Variables")
-  
+
 
 
 
