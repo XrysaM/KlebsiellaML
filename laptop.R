@@ -112,7 +112,7 @@ ggplot(data=feat_acc, aes(x=No_of_Variables, y=Kappa, group=Size_of_Subset))+
 
 #Accuracy boxplot
 ggplot(data=feat_acc, aes( x=Size_of_Subset, y=Accuracy))+
-  geom_boxplot() + 
+  geom_boxplot(aes(color= Size_of_Subset), lwd=1) + 
   geom_dotplot(binaxis='y', stackdir='center',dotsize=0.75,binwidth = 0.001)+
   theme_bw()+
   labs(caption = "470=boruta output, 460=removed only variance, \n 
