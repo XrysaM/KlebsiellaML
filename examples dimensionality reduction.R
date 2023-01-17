@@ -51,20 +51,20 @@ rm(k_9_saved)
 
 #LDA - Linear Discriminant Analysis  
 library(MASS)
-model <- lda(formula = host_categories ~ ., data = k_9_fix) 
+model <- lda(formula = host_categories ~ ., data = fix) 
 # get the x,y coordinates for the LDA plot
 data.lda.values <- predict(model)
 # create a dataframe that has all the info we need to draw a graph
 plot.data <- data.frame(X=data.lda.values$x[,1], Y=data.lda.values$x[,2], 
-                        Hosts=k_9_fix$host_categories)
+                        Hosts=fix$host_categories)
 
 head(plot.data)
 
 # draw a graph using ggplot2
-p <- ggplot(data=plot.data, aes(x=X, y=Y)) +
+ggplot(data=plot.data, aes(x=X, y=Y)) +
   geom_point(aes(color=Hosts)) +
   theme_bw()
-p
+
 
 
 #QDA - Quadratic Discriminant Analysis -- Error :some group is too small for 'qda'
@@ -85,4 +85,26 @@ mean(predictions$class == test.transformed$Species)
 #same as PCA but calculate distances instead of correlations between samples.
 
 #it doesnt work with negative values
+
+#MDS-plot - how the samples are related to each other
+#proximity matrix -> distance matrix
+distance.matrix <- as.dist(1-model_rf$proximity)
+mds.stuff <- cmdscale(distance.matrix, eig=TRUE, x.ret=TRUE)
+
+# calculate the percentage of variation that each MDS axis accounts for
+mds.var.per <- round(mds.stuff$eig/sum(mds.stuff$eig)*100, 1)
+
+#plot that shows the MDS axes and the variation:
+mds.values <- mds.stuff$points
+mds.data <- data.frame(Sample=rownames(mds.values),
+                       X=mds.values[,1],
+                       Y=mds.values[,2],
+                       Host=fix$host_categories)
+
+ggplot(data=mds.data, aes(x=X, y=Y,color=Host)) + 
+  geom_point(alpha = 9/10, size=2)+
+  theme_bw() +
+  xlab(paste("MDS1 - ", mds.var.per[1], "%", sep="")) +
+  ylab(paste("MDS2 - ", mds.var.per[2], "%", sep="")) +
+  ggtitle("MDS plot using (1 - Random Forest Proximities)")
 
