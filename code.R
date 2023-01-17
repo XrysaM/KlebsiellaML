@@ -26,8 +26,8 @@ unique(k_9[c(3,4)])
 
 
 library(DataExplorer)
-plot_intro(k_9_test)
-plot_bar(k_9_test)
+plot_intro(fix)
+plot_bar(fix) 
 #plot_correlation(k_9_test) #too many var - 128gb
 
 #####
