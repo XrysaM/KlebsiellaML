@@ -220,7 +220,7 @@ control <- rfeControl(functions = rfFuncs, # random forest
                       number = 10) # number of folds
 
 # Features
-a <- list(small=k_9_fix,big=k_9_tent)#dokimase na to baleis kateu8eian
+a <- list(k_9_fix,k_9_tent)#dokimase na to baleis kateu8eian
 b <- 1 
 feat_acc <- data.frame(subset    = numeric(), 
                        variables = numeric(),
@@ -259,7 +259,7 @@ Size_of_Subset=as.factor(feat_acc$subset)
 
 #Accuracy line
 ggplot(data=feat_acc, aes(x=No_of_Variables, y=Accuracy, group=Size_of_Subset))+
-  geom_line(aes(color=Size_of_Subset),linewidth=1.5)+
+  geom_line(aes(color=Size_of_Subset),size = 1.2)+
   geom_point()+
   scale_color_brewer(palette="Set1")+
   theme_bw()+
@@ -406,7 +406,7 @@ host_categories <- k_9_test$host_categories
 #size of subsets to plot/compare
 #change n for each subset
 #values : 199,999,4999,9999
-n <- 199
+n <- 0
 
 #create 10 of each subset of features + the boruta sets
 Subsets <- list(k_9_fix,k_9_tent) #just the boruta sets
@@ -431,7 +431,7 @@ for(i in Subsets){
   # Run RFE
   result_rfe <- rfe(x = x_train, 
                     y = y_train, 
-                    sizes = seq(50, ncol(i), by=20),#posa apo ta features na parei
+                    sizes = seq(50, ncol(i), by=1000),#posa apo ta features na parei
                     rfeControl = control)
   #boruta:by=10,  200:by=20,  1000:by=100,  5000:by=500,  10000:by=1000   
   
@@ -450,9 +450,9 @@ Size_of_Subset=as.factor(feat_acc$set)
 #Accuracy boxplot
 ggplot(data=feat_acc, aes( x=Size_of_Subset, y=Accuracy))+
   geom_boxplot(lwd=1,aes(color=Size_of_Subset)) + 
-  geom_dotplot(binaxis='y', stackdir='center',dotsize=1,binwidth = 0.001)+
+  geom_dotplot(binaxis='y', stackdir='center',dotsize=0.75,binwidth = 0.001)+
   theme_bw()+
-  labs(caption = "Boruta fox for Tentatives: \n 470=after fix, 730=before fix")+
+  labs(caption = "Boruta fix for Tentatives: \n 470=after fix, 730=before fix")+
   labs(x = "Size of Dataset")+
   ggtitle("Accuracy per subset of Variables")
 
@@ -461,7 +461,8 @@ ggplot(data=feat_acc, aes( x=Size_of_Subset, y=Kappa))+
   geom_boxplot(lwd=1,aes(color=Size_of_Subset)) + 
   geom_dotplot(binaxis='y', stackdir='center',dotsize=1,binwidth = 0.001)+
   theme_bw()+
-  labs(caption = "Boruta fox for Tentatives: \n 470=after fix, 730=before fix")+
+  scale_color_brewer(palette="Dark2")+
+  labs(caption = "Boruta fix for Tentatives: \n 470=after fix, 730=before fix")+
   labs(x = "Size of Dataset")+
   ggtitle("Kappa per subset of Variables")
 
