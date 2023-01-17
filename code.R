@@ -24,6 +24,10 @@ any(is.na(k_9)) #is False == no NAs
 #which hosts
 unique(k_9[c(3,4)]) 
 
+#change fox name when host_categories is factor
+levels(k_9_fix$host_categories)[levels(k_9_fix$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
+levels(k_9_tent$host_categories)[levels(k_9_tent$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
+
 
 library(DataExplorer)
 plot_intro(fix)
@@ -57,21 +61,6 @@ k_9_tent <- cbind(host_categories, k_9_test[,c(boruta_signif)])
 k_9_fix <- cbind(host_categories, k_9_test[,c(boruta_no_Tent)])
 
 
-#####
-#varImp(caret)
-library(caret)
-set.seed(100)
-rPartMod <- train(host_categories ~ ., data=k_9_fix, method="rpart")
-rpartImp <- varImp(rPartMod)
-print(rpartImp)
-plot(rpartImp, top = 15, main='Variable Importance')
-
-#varimp random forest
-set.seed(100)
-rfMod <- train(host_categories ~ ., data=k_9_fix, method="rf")
-rfImp <- varImp(rfMod)
-rfImp
-plot(rfImp, top = 20, main='Variable Importance')
 
 
 #########
