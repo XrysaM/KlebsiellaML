@@ -181,7 +181,7 @@ pos <- as.numeric(which(error.mtry$Error == min_error))
 #if more than 1 mtry have min error
 #pick the first
 if(length(pos)>1){
-  pos <- pos[1]
+  pos <- pos[1] #isws kalutera length
 }
 best_trees <- error.mtry$Trees[pos]
 
@@ -234,6 +234,7 @@ ggplot(data=mds.data, aes(x=X, y=Y,color=Host)) +
 
 ######
 #One vs all Random Forest classifier
+#for the finished dataset - 284 variables
 
 temp_fix <- fix
 
@@ -245,6 +246,7 @@ for (i in 1:8){
   #create new data for each host as host - other
   temp_fix$host_categories <- ifelse(fix$host_categories==hosts[i],hosts[i],"other")
   temp_fix$host_categories <- as.factor(temp_fix$host_categories)
+  #default settings RF pred
   model <- randomForest(host_categories ~ ., data=temp_fix,proximity=TRUE)
   print(model)
   
@@ -252,7 +254,7 @@ for (i in 1:8){
   a <- 0
   for(y in c(500,1000)){
     c <- 0
-    for(j in 1:20) {
+    for(j in 1:32) {
       model <- randomForest(host_categories ~ ., data=temp_fix, mtry=j, ntree=y)
       c <- j + a
       error.mtry[c,] <- c(hosts[i],
@@ -260,7 +262,7 @@ for (i in 1:8){
                           model$err.rate[nrow(model$err.rate),1])
                           #the oob err at max trees
     }
-    a <- a+20
+    a <- a+32
   }
   datalist <- rbind(datalist, error.mtry)
   
@@ -273,8 +275,8 @@ for (i in 1:8){
   best_trees <- as.numeric(error.mtry$Trees[pos[1]])
   
   #this is for printing the right mtry 
-  if(pos[1]>20){
-    min_mtry <- pos[1] - 20
+  if(pos[1]>32){
+    min_mtry <- pos[1] - 32
   } else {
     min_mtry <- pos[1]
   }
