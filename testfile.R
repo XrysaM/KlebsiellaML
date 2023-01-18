@@ -16,7 +16,7 @@ k_9_tent <- read_csv("k_9_withTent.csv")
 k_9_fix$host_categories <- as.factor(k_9_fix$host_categories)
 k_9_tent$host_categories <- as.factor(k_9_tent$host_categories)
 
-#change fox name 
+#change fox name when host_categories is factor
 levels(k_9_fix$host_categories)[levels(k_9_fix$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
 levels(k_9_tent$host_categories)[levels(k_9_tent$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
 

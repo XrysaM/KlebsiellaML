@@ -63,7 +63,8 @@ head(plot.data)
 # draw a graph using ggplot2
 ggplot(data=plot.data, aes(x=X, y=Y)) +
   geom_point(aes(color=Hosts)) +
-  theme_bw()
+  theme_bw()+
+  ggtitle("LDA for fix-290")
 
 
 
