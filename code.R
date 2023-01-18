@@ -79,43 +79,50 @@ k_9_fix$host_categories <- as.factor(k_9_fix$host_categories)
 model <- randomForest(host_categories ~ ., data=k_9_fix, proximity=TRUE)
 model
 
+
+model <- randomForest(host_categories ~ ., data=k_9_fix,ntree=1500, proximity=TRUE)
+model
 #plot a df of the error rates to check for different ntree
 oob.error.data <- data.frame(
-  Trees=rep(1:nrow(model$err.rate), times=3), #1:500 3x, (once for each type)
-  Type=rep(c("OOB", "birds", "cat", "cattle", "dog", "grey-headed_flying_fox",
+  Trees=rep(1:nrow(model$err.rate), times=9), #1:500 9x, (once for each type)
+  Type=rep(c("OOB", "birds", "cat", "cattle", "dog", "fox",
              "horse","human", "pig"), each=nrow(model$err.rate)),
   Error=c(model$err.rate[,"OOB"], model$err.rate[,"birds"],
           model$err.rate[,"cat"], model$err.rate[,"cattle"],
-          model$err.rate[,"dog"], model$err.rate[,"grey-headed_flying_fox"],
+          model$err.rate[,"dog"], model$err.rate[,"fox"],
           model$err.rate[,"horse"], model$err.rate[,"human"],
           model$err.rate[,"pig"]))
 
 ggplot(data=oob.error.data, aes(x=Trees, y=Error)) +
-  geom_line(aes(color=Type))
+  geom_line(aes(color=Type))+
+  ggtitle("Random Forest error per number of trees")
 
-
+#find best mtry and best ntree together
 oob.values <- vector(length=150)
 error.mtry <- data.frame(Trees=numeric(), Error=numeric())
 a <- 0
 for(y in c(500,1000,1500)){
   c <- 0
-  for(i in 1:50) {
-    temp.model <- randomForest(host_categories ~ ., data=k_9_fix, mtry=i, ntree=y)
+  for(i in 1:40) #+- the og = 21
+  {
+    model <- randomForest(host_categories ~ ., data=k_9_fix, mtry=i, ntree=y)
     c <- i + a
-    oob.values[c] <- temp.model$err.rate[nrow(temp.model$err.rate),1]#the oob err at 500 trees
+    oob.values[c] <- model$err.rate[nrow(model$err.rate),1]#the oob err at 500 trees
     error.mtry[c,] <- c(y,oob.values[c])
   }
-  a <- a+50
+  a <- a+40
 }
 No_of_trees <-as.factor(error.mtry$Trees)
 ggplot(data=error.mtry, aes( x=No_of_trees, y=Error))+
-  geom_boxplot() + 
-  geom_dotplot(binaxis='y', stackdir='center',dotsize=0.5,binwidth = 0.001)
-
+  geom_boxplot(aes(color= No_of_trees), lwd=1) + 
+  theme_bw() +
+  geom_dotplot(binaxis='y', stackdir='center',dotsize=0.5,binwidth = 0.001)+
+  ggtitle("Random Forest error per number of Trees for every mtry")
 
 #find which mtry&tree have the min error
 min_error<-min(error.mtry$Error)
 pos <- as.numeric(which(error.mtry$Error == min_error))
+
 #if more than 1 mtry have min error
 #pick the last
 if(length(pos)>1){
@@ -124,8 +131,8 @@ if(length(pos)>1){
 best_trees <- error.mtry$Trees[pos]
 
 #this is for printing the right mtry 
-if(pos>50){
-  min_mtry <- pos - 50
+if(pos>40){
+  min_mtry <- pos - 40
 } else {
   min_mtry <- pos
 }
@@ -136,15 +143,16 @@ best_trees
 
 
 ## final model for proximities using the best ntree and the best mtry
-model <- randomForest(host_categories ~ ., 
-                      data=k_9_fix,
-                      ntree=best_trees,
-                      proximity=TRUE, 
-                      mtry=min_mtry)
-model
+## final model for proximities using the best ntree and the best mtry
+model_rf <- randomForest(host_categories ~ ., 
+                         data=fix,
+                         ntree=best_trees,
+                         proximity=TRUE, 
+                         mtry=min_mtry)
+model_rf
 
 #varimp
-model$importance[order(model$importance[,1],decreasing=TRUE),]
+top50rf <- model$importance[order(model$importance[,1],decreasing=TRUE),][1:50]
 
 #####
 
@@ -176,59 +184,69 @@ ggplot(data=mds.data, aes(x=X, y=Y, label=Sample)) +
 
 ######
 #One vs all Random Forest classifier
+#for the boruta output - 470 variables
 
-fix <- k_9_fix #test
+library(ggplot2)
+library(cowplot)
+library(randomForest)
+set.seed(42)
+
+temp_fix <- k_9_fix #temporary dataset
 hosts <- unique(k_9_fix$host_categories)
 hosts <- as.character(hosts)
+
 datalist <- data.frame(Host = character(),Trees=numeric(), Error=numeric())
 ovaimp <- list()  #to save the variables' importance
+
 for (i in 1:8){
-  fix$host_categories <- ifelse(k_9_fix$host_categories==hosts[i],hosts[i],"other")
-  fix$host_categories <- as.factor(fix$host_categories)
-  model <- randomForest(host_categories ~ ., data=fix, proximity=TRUE)
-  print(model)
+  #create new data for each host as host - other
+  temp_fix$host_categories <- ifelse(k_9_fix$host_categories==hosts[i],hosts[i],"other")
+  temp_fix$host_categories <- as.factor(temp_fix$host_categories)
+  #default settings RF pred
+  ova_model <- randomForest(host_categories ~ ., data=temp_fix, proximity=TRUE)
+  #print(ova_model)
   
   error.mtry <- data.frame(Host = character(), Trees=numeric(), Error=numeric())
   a <- 0
-  for(y in c(500,1000)){
+  for(y in c(500,1000,1500)){
     c <- 0
-    for(j in 1:20) {
-      model <- randomForest(host_categories ~ ., data=fix, mtry=j, ntree=y)
+    for(j in 1:42) {
+      ova_model <- randomForest(host_categories ~ ., data=temp_fix, mtry=j, ntree=y)
       c <- j + a
       error.mtry[c,] <- c(hosts[i],
                           y,
-                          model$err.rate[nrow(model$err.rate),1])
-      #the oob err at max trees
+                          ova_model$err.rate[nrow(ova_model$err.rate),1])
+                            #the oob err at max trees
     }
-    a <- a+20
+    a <- a+42
   }
   datalist <- rbind(datalist, error.mtry)
+}
   
   #find which mtry&tree have the min error
   min_error <- min(error.mtry$Error)
   pos <- which(error.mtry$Error == min_error)
   
-  #if more than 1 mtry have min error
-  #pick the first
   best_trees <- as.numeric(error.mtry$Trees[pos[1]])
   
   #this is for printing the right mtry 
-  if(pos[1]>20){
-    min_mtry <- pos[1] - 20
+  #picks the 1st mtry if more than one
+  if(pos[1]>42){
+    min_mtry <- pos[1] - 42
   } else {
     min_mtry <- pos[1]
   }
   ## final model for proximities using the best ntree and the best mtry
-  model <- randomForest(host_categories ~ ., 
-                        data=fix,
+  ova_model <- randomForest(host_categories ~ ., 
+                        data=temp_fix,
                         ntree=best_trees,
                         proximity=TRUE, 
                         mtry=min_mtry)
-  print(model)
+  print(ova_model)
   
   #varimp
   #a list of the top 20 most important k-mers for each host
-  ovaimp[i] <- list(model$importance[order(model$importance[,1],decreasing=TRUE),][1:20])
+  ovaimp[i] <- list(ova_model$importance[order(ova_model$importance[,1],decreasing=TRUE),][1:20])
 }
 #name the list
 ovaimp <- setNames(ovaimp, hosts)
@@ -244,8 +262,9 @@ datalist$Trees <- as.numeric(datalist$Trees)
 No_of_trees <-as.factor(datalist$Trees)
 ggplot(data=datalist, aes( x=Host, y=Error, fill= No_of_trees))+
   geom_boxplot()+
+  theme_bw()+
   ggtitle("One vs Rest classification -  
-          OOB error rate per host for 500 and 1000 trees")
+          OOB error rate per host for 500, 1000 and 1500 trees")
 
 #keep only k-mers
 for(i in 1:8){
