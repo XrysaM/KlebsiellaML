@@ -236,12 +236,18 @@ ggplot(data=mds.data, aes(x=X, y=Y,color=Host)) +
 #One vs all Random Forest classifier
 #for the finished dataset - 284 variables
 
+library(ggplot2)
+library(cowplot)
+library(randomForest)
+set.seed(42)
+
 temp_fix <- fix
 
 hosts <- unique(fix$host_categories)
 hosts <- as.character(hosts)
 datalist <- data.frame(Host = character(),Trees=numeric(), Error=numeric())
-ovaimp <- list()  #to save the variables' importance
+ovaimp_284 <- list()  #to save the variables' importance
+
 for (i in 1:8){
   #create new data for each host as host - other
   temp_fix$host_categories <- ifelse(fix$host_categories==hosts[i],hosts[i],"other")
@@ -265,7 +271,7 @@ for (i in 1:8){
     a <- a+32
   }
   datalist <- rbind(datalist, error.mtry)
-  
+
   #find which mtry&tree have the min error
   min_error <- min(error.mtry$Error)
   pos <- which(error.mtry$Error == min_error)
@@ -290,7 +296,7 @@ for (i in 1:8){
   
   #varimp
   #a list of the top 20 most important k-mers for each host
-  ovaimp[i] <- list(model$importance[order(model$importance[,1],decreasing=TRUE),][1:20])
+  ovaimp_284[i] <- list(model$importance[order(model$importance[,1],decreasing=TRUE),][1:20])
 
   #MDS-plot - how the samples are related to each other
   #proximity matrix -> distance matrix
@@ -316,12 +322,12 @@ for (i in 1:8){
   )
 }
 #name the list
-ovaimp <- setNames(ovaimp, hosts)
+ovaimp_284 <- setNames(ovaimp_284, hosts)
 #plot the imp features 
 for(i in 1:8){
   par(mar=c(5,7,4,1))
-  barplot(ovaimp[[i]],horiz = TRUE,las=1, 
-          main=paste("Most important features -", names(ovaimp[i])), 
+  barplot(ovaimp_284[[i]],horiz = TRUE,las=1, 
+          main=paste("Most important features -", names(ovaimp_284[i])), 
           xlab="Mean Decrease Gini") 
 }
 
@@ -330,18 +336,23 @@ datalist$Trees <- as.numeric(datalist$Trees)
 No_of_trees <-as.factor(datalist$Trees)
 ggplot(data=datalist, aes( x=Host, y=Error, fill= No_of_trees))+
   geom_boxplot()+
+  theme_bw() +
   ggtitle("One vs Rest classification -  
-          OOB error rate per host for 500 and 1000 trees")
+          OOB error rate per host for 500,1000 trees")
 
 #keep only k-mers
 for(i in 1:8){
-  ovaimp[[i]] <- names(ovaimp[[i]])
+  ovaimp_284[[i]] <- names(ovaimp_284[[i]])
 }
 #find what top kmers are the same between hosts
+samekmers <- c()
 for(i in 1:7){
   for(j in (i+1):8){
-    x<-intersect(ovaimp[[i]],ovaimp[[j]])
+    x<-intersect(ovaimp_284[[i]],ovaimp_284[[j]])
     if(identical(x,character(0))){next}
-    cat(names(ovaimp[i]),names(ovaimp[j]), x, "\n")
+    cat(names(ovaimp_284[i]),names(ovaimp_284[j]), x, "\n")
+    samekmers <- c(samekmers,x)
   }
 }
+#remove 
+fix_new <- fix[!fix %in% fix[samekmers]]
