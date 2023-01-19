@@ -196,7 +196,7 @@ hosts <- unique(k_9_fix$host_categories)
 hosts <- as.character(hosts)
 
 datalist <- data.frame(Host = character(),Trees=numeric(), Error=numeric())
-ovaimp <- list()  #to save the variables' importance
+ovaimp_470 <- list()  #to save the variables' importance
 
 for (i in 1:8){
   #create new data for each host as host - other
@@ -204,11 +204,11 @@ for (i in 1:8){
   temp_fix$host_categories <- as.factor(temp_fix$host_categories)
   #default settings RF pred
   ova_model <- randomForest(host_categories ~ ., data=temp_fix, proximity=TRUE)
-  #print(ova_model)
+  print(ova_model)
   
   error.mtry <- data.frame(Host = character(), Trees=numeric(), Error=numeric())
   a <- 0
-  for(y in c(500,1000,1500)){
+  for(y in c(500,1000)){
     c <- 0
     for(j in 1:42) {
       ova_model <- randomForest(host_categories ~ ., data=temp_fix, mtry=j, ntree=y)
@@ -221,7 +221,6 @@ for (i in 1:8){
     a <- a+42
   }
   datalist <- rbind(datalist, error.mtry)
-}
   
   #find which mtry&tree have the min error
   min_error <- min(error.mtry$Error)
@@ -246,14 +245,39 @@ for (i in 1:8){
   
   #varimp
   #a list of the top 20 most important k-mers for each host
-  ovaimp[i] <- list(ova_model$importance[order(ova_model$importance[,1],decreasing=TRUE),][1:20])
+  ovaimp_470[i] <- list(ova_model$importance[order(ova_model$importance[,1],decreasing=TRUE),][1:20])
+  
+  
+  #MDS-plot - how the samples are related to each other
+  #proximity matrix -> distance matrix
+  distance.matrix <- as.dist(1-ova_model$proximity)
+  mds.stuff <- cmdscale(distance.matrix, eig=TRUE, x.ret=TRUE)
+  # calculate the percentage of variation that each MDS axis accounts for
+  mds.var.per <- round(mds.stuff$eig/sum(mds.stuff$eig)*100, 1)
+  #plot that shows the MDS axes and the variation:
+  mds.values <- mds.stuff$points
+  mds.data <- data.frame(Sample=rownames(mds.values),
+                         X=mds.values[,1],
+                         Y=mds.values[,2],
+                         Hosts=temp_fix$host_categories) 
+  
+  print(
+    ggplot(data=mds.data, aes(x=X, y=Y,color=Hosts)) + 
+      theme_bw() +
+      geom_point(alpha = 8/10, size=2)+
+      scale_color_brewer(palette="Set1")+
+      xlab(paste("MDS1 - ", mds.var.per[1], "%", sep="")) +
+      ylab(paste("MDS2 - ", mds.var.per[2], "%", sep="")) +
+      ggtitle(paste("MDS for", hosts[i],"vs the rest"))
+  )
+  
 }
 #name the list
-ovaimp <- setNames(ovaimp, hosts)
+ovaimp_470 <- setNames(ovaimp_470, hosts)
 #plot the imp features 
 for(i in 1:8){
-  barplot(ovaimp[[i]],horiz = TRUE,las=1, 
-          main=paste("Most important features -", names(ovaimp[i])), 
+  barplot(ovaimp_470[[i]],horiz = TRUE,las=1, 
+          main=paste("Most important features -", names(ovaimp_470[i])), 
           xlab="Mean Decrease Gini") 
 }
 
@@ -264,18 +288,21 @@ ggplot(data=datalist, aes( x=Host, y=Error, fill= No_of_trees))+
   geom_boxplot()+
   theme_bw()+
   ggtitle("One vs Rest classification -  
-          OOB error rate per host for 500, 1000 and 1500 trees")
+          OOB error rate per host for 500,1000 trees")
 
-#keep only k-mers
+#keep only k-mers for each host
 for(i in 1:8){
-  ovatest[[i]] <- names(ovatest[[i]])
+  ovaimp_470[[i]] <- names(ovaimp_470[[i]])
 }
-#find what top kmers are the same between hosts
+#find what kmers are the same between hosts
+samekmers <- c()
 for(i in 1:7){
   for(j in (i+1):8){
-    x<-intersect(ovatest[[i]],ovatest[[j]])
+    x<-intersect(ovaimp_470[[i]],ovaimp_470[[j]])
     if(identical(x,character(0))){next}
-    cat(names(ovatest[i]),names(ovatest[j]), x, "\n")
+    cat(names(ovaimp_470[i]),names(ovaimp_470[j]), x, "\n")
+    samekmers <- c(samekmers,x) 
   }
 }
-
+#remove 
+k_9_new <- k_9_fix[!k_9_fix %in% k_9_fix[samekmers]]
