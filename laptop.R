@@ -139,6 +139,8 @@ model <- randomForest(host_categories ~ ., data=fix, proximity=TRUE)
 model
 
 #plot a df of the error rates to check for different ntree
+model <- randomForest(host_categories ~ ., data=fix,ntree=1500, proximity=TRUE)
+
 oob.error.data <- data.frame(
   Trees=rep(1:nrow(model$err.rate), times=9), #1:500 9x, (for hosts and oob)
   Host=rep(c("OOB", "birds", "cat", "cattle", "dog", "fox",
@@ -151,7 +153,7 @@ oob.error.data <- data.frame(
 
 ggplot(data=oob.error.data, aes(x=Trees, y=Error)) +
   theme_bw() +
-  geom_line(aes(color=Host), size=0.75)+
+  geom_line(aes(color=Host), linewidth=0.75)+
   ggtitle("OOB error rates per number of trees for each host")
 
 
@@ -160,20 +162,20 @@ error.mtry <- data.frame(Trees=numeric(), Error=numeric())
 a <- 0
 for(y in c(500,1000,1500)){
   c <- 0
-  for(i in 1:50) {
+  for(i in 1:32) {
     temp.model <- randomForest(host_categories ~ ., data=fix, mtry=i, ntree=y)
     c <- i + a
     oob.values[c] <- temp.model$err.rate[nrow(temp.model$err.rate),1]#the oob err at 500 trees
     error.mtry[c,] <- c(y,oob.values[c])
   }
-  a <- a+50
+  a <- a+32
 }
 No_of_trees <-as.factor(error.mtry$Trees)
 ggplot(data=error.mtry, aes( x=No_of_trees, y=Error))+
-  geom_boxplot() + 
+  geom_boxplot(aes(color= No_of_trees), lwd=1) + 
   theme_bw() +
-  geom_dotplot(binaxis='y', stackdir='center',dotsize=0.3,binwidth = 0.001)+
-  ggtitle("Model performance per number of trees")
+  geom_dotplot(binaxis='y', stackdir='center',dotsize=0.5,binwidth = 0.001)+
+  ggtitle("Random Forest error per number of Trees for every mtry")
 
 #find which mtry&tree have the min error
 min_error<-min(error.mtry$Error)
@@ -181,13 +183,13 @@ pos <- as.numeric(which(error.mtry$Error == min_error))
 #if more than 1 mtry have min error
 #pick the first
 if(length(pos)>1){
-  pos <- pos[1] #isws kalutera length
+  pos <- pos[1] 
 }
 best_trees <- error.mtry$Trees[pos]
 
 #this is for printing the right mtry 
-if(pos>50){
-  min_mtry <- pos - 50
+if(pos>32){
+  min_mtry <- pos - 32
 } else {
   min_mtry <- pos
 }
@@ -206,7 +208,13 @@ model_rf <- randomForest(host_categories ~ .,
 model_rf
 
 #varimp
-top50rf <- model$importance[order(model$importance[,1],decreasing=TRUE),][1:50]
+rfimp_284 <- model_rf$importance[order(model_rf$importance[,1],decreasing=TRUE),][1:50]
+
+#plot the varimp
+par(mar=c(5,7,4,1))
+barplot(rfimp_284[1:20],horiz = TRUE,las=1,
+        main="Random Forest - Most important features - 284 \n top 20 out of 50",
+        xlab="Mean Decrease Gini")
 
 
 #MDS-plot - how the samples are related to each other
@@ -229,7 +237,7 @@ ggplot(data=mds.data, aes(x=X, y=Y,color=Host)) +
   theme_bw() +
   xlab(paste("MDS1 - ", mds.var.per[1], "%", sep="")) +
   ylab(paste("MDS2 - ", mds.var.per[2], "%", sep="")) +
-  ggtitle("MDS plot using (1 - Random Forest Proximities)")
+  ggtitle("MDS for Random Forest - 284")
 
 
 ######
