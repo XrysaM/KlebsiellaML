@@ -527,3 +527,325 @@ ggplot(data=feat_acc, aes(x=No_of_Variables, y=Accuracy, group=Size_of_Subset))+
 #postResample(predict(result_rfe, x_test), y_test)
 
 #rm(list= c("control", "x", "x_train", "inTrain", "y", "y_test","y_train"))
+
+
+
+##############
+#temp 
+#single ova
+
+#there are comments in the code for 
+#each dataset 
+
+#to save the variables' importance
+ovaimp_470 <- list()  
+ovaimp_284 <- list()
+
+#temporary dataset
+#temp_fix <- k_9_fix #this for 470
+#or
+temp_fix <- fix    #this for 285
+
+hosts <- unique(k_9_fix$host_categories)
+hosts <- as.character(hosts)
+
+#change for each host
+#1=human, 2=cattle, 3=birds, 4=pig,
+#5=horse, 6=dog,    7=cat,   8=fox,
+i <- 8
+
+temp_fix$host_categories <- ifelse(k_9_fix$host_categories==hosts[i],hosts[i],"other")
+temp_fix$host_categories <- as.factor(temp_fix$host_categories)
+
+#default parameters
+ova_model <- randomForest(host_categories ~ ., data=temp_fix, proximity=TRUE)
+ova_model
+
+error.mtry <- data.frame(Host = character(), Trees=numeric(), Error=numeric())
+a <- 0
+for(y in c(500,1000)){
+  c <- 0
+  for(j in 1:32) #470->1:42, 284->1:32
+    {
+    ova_model <- randomForest(host_categories ~ ., data=temp_fix, mtry=j, ntree=y)
+    c <- j + a
+    error.mtry[c,] <- c(hosts[i],
+                        y,
+                        ova_model$err.rate[nrow(ova_model$err.rate),1])
+                            #the oob err at max trees
+  }
+  #470->42, 284->32
+  a <- a+32
+}
+
+min_error <- min(error.mtry$Error)
+pos <- which(error.mtry$Error == min_error)
+best_trees <- as.numeric(error.mtry$Trees[pos[1]])
+
+#this is for printing the right mtry 
+#470->42, 284->32
+if(pos[1]>32)
+{
+  min_mtry <- pos[1] - 32
+} else {
+  min_mtry <- pos[1]
+}
+
+#print 
+min_error 
+min_mtry <-18
+best_trees
+
+## final model using the best ntree and the best mtry
+
+#run this until oob error is smaller than the default
+ova_model <- randomForest(host_categories ~ ., 
+                          data=temp_fix,
+                          ntree=best_trees,
+                          proximity=TRUE, 
+                          mtry=min_mtry)
+ova_model
+
+#save the most imp features after the best accuracy above is found
+
+#a list of the top 20 most important k-mers for each host
+#ovaimp_470[i] <- list(ova_model$importance[order(ova_model$importance[,1],decreasing=TRUE),][1:20])
+#or 
+ovaimp_284[i] <- list(ova_model$importance[order(ova_model$importance[,1],decreasing=TRUE),][1:20])
+
+#MDS-plot - how the samples are related to each other
+#proximity matrix -> distance matrix
+distance.matrix <- as.dist(1-ova_model$proximity)
+mds.stuff <- cmdscale(distance.matrix, eig=TRUE, x.ret=TRUE)
+# calculate the percentage of variation that each MDS axis accounts for
+mds.var.per <- round(mds.stuff$eig/sum(mds.stuff$eig)*100, 1)
+#plot that shows the MDS axes and the variation:
+mds.values <- mds.stuff$points
+mds.data <- data.frame(Sample=rownames(mds.values),
+                       X=mds.values[,1],
+                       Y=mds.values[,2],
+                       Hosts=temp_fix$host_categories) 
+
+ggplot(data=mds.data, aes(x=X, y=Y,color=Hosts)) + 
+  theme_bw() +
+  geom_point(alpha = 8/10, size=2,)+
+  scale_color_brewer(palette="Set1")+
+  xlab(paste("MDS1 - ", mds.var.per[1], "%", sep="")) +
+  ylab(paste("MDS2 - ", mds.var.per[2], "%", sep="")) +
+  ggtitle(paste("MDS for", hosts[i],"vs the rest - 284")) #-470 or -284
+
+
+#now run again with new i for next host 
+
+
+#when all host are computed 
+#print the variable importances for each one
+
+#fix - 284
+
+#name the list
+ovaimp_284 <- setNames(ovaimp_284, hosts)
+#plot the imp features 
+for(i in 1:8){
+  par(mar=c(5,7,4,1))
+  barplot(ovaimp_284[[i]],horiz = TRUE,las=1, 
+          main=paste("Most important features -", names(ovaimp_284[i])), 
+          xlab="Mean Decrease Gini") 
+}
+
+#then create a new dataset 
+#removing the same kmers found between hosts
+
+#keep only k-mers for each host
+#(removes Gini score)
+for(i in 1:8){
+  ovaimp_284[[i]] <- names(ovaimp_284[[i]])
+}
+#find what kmers are the same between hosts
+samekmers <- c()
+for(i in 1:7){
+  for(j in (i+1):8){
+    x<-intersect(ovaimp_284[[i]],ovaimp_284[[j]])
+    if(identical(x,character(0))){next}
+    cat(names(ovaimp_284[i]),names(ovaimp_284[j]), x, "\n")
+    samekmers <- c(samekmers,x) 
+  }
+}
+#remove 
+fix_new <- fix[!fix %in% fix[samekmers]]
+
+
+
+
+
+#########
+#NOT USEFULL -REMOVE
+
+#then create a new dataset 
+#removing the same kmers found between hosts
+
+#keep only k-mers for each host
+#(removes Gini score)
+for(i in 1:8){
+  ovaimp_470[[i]] <- names(ovaimp_470[[i]])
+}
+
+
+#find what kmers are the same between hosts
+samekmers <- c()
+for(i in 1:7){
+  for(j in (i+1):8){
+    x<-intersect(ovaimp_470[[i]],ovaimp_470[[j]])
+    if(identical(x,character(0))){next}
+    cat(names(ovaimp_470[i]),names(ovaimp_470[j]), x, "\n")
+    samekmers <- c(samekmers,x) 
+  }
+}
+#remove 
+k_9_new <- k_9_fix[!k_9_fix %in% k_9_fix[samekmers]]
+
+
+
+#the same for 
+
+#then create a new dataset 
+#removing the same kmers found between hosts
+
+#keep only k-mers for each host
+#(removes Gini score)
+for(i in 1:8){
+  ovaimp_284[[i]] <- names(ovaimp_284[[i]])
+}
+#find what kmers are the same between hosts
+samekmers <- c()
+for(i in 1:7){
+  for(j in (i+1):8){
+    x<-intersect(ovaimp_284[[i]],ovaimp_284[[j]])
+    if(identical(x,character(0))){next}
+    cat(names(ovaimp_284[i]),names(ovaimp_284[j]), x, "\n")
+    samekmers <- c(samekmers,x) 
+  }
+}
+#remove 
+fix_new <- fix[!fix %in% fix[samekmers]]
+
+
+
+
+
+#######
+
+
+
+
+# Load library
+library("VennDiagram")
+library("gridExtra")
+
+
+#keep only k-mers for each host
+#(removes Gini score)
+#470
+for(i in 1:8){
+  ovaimp_470[[i]] <- names(ovaimp_470[[i]])
+}
+#284
+for(i in 1:8){
+  ovaimp_284[[i]] <- names(ovaimp_284[[i]])
+}
+
+
+
+#Common kmers between sets - One vs All 
+
+#save the same kmers 
+ovaimp_all <- list()
+for(i in 1:8){
+  x<-intersect(ovaimp_470[[i]],ovaimp_284[[i]])
+  ovaimp_all[i] <- list(x) 
+  
+  #plot
+  grid.newpage()
+  venn <- draw.pairwise.venn(area1=20, area2=20,
+                             cross.area=length(ovaimp_all[[i]]),  
+                             category=c("ova-470","ova-284"),fill=c("Red","Yellow"), 
+                             cex=1.3, cat.cex = 1.2, 
+                             cat.dist = 0.040, cat.pos = c(-35,35),
+                             ind = FALSE)
+  
+  grid.arrange(gTree(children = venn),
+               top= paste("OvA - Common kmers between sets -",names(ovaimp_470[i])))
+}
+#give names
+ovaimp_all <- setNames(ovaimp_all, names(ovaimp_284))
+
+
+
+#find same kmers between HOSTS and remove them
+#keeps only unique kmers 
+
+samekmers <- c()
+for(i in 1:7){
+  for(j in (i+1):8){
+    x<-intersect(ovaimp_all[[i]],ovaimp_all[[j]])
+    if(identical(x,character(0))){next}
+    cat(names(ovaimp_all[i]),names(ovaimp_all[j]), x, "\n")
+    samekmers <- c(samekmers,x) 
+    #remove the kmers
+    ovaimp_all[[i]] <- ovaimp_all[[i]][-which(ovaimp_all[[i]] %in% samekmers )]
+    ovaimp_all[[j]] <- ovaimp_all[[j]][-which(ovaimp_all[[j]] %in% samekmers )]
+  }
+}
+
+
+#Common kmers between sets - Random Forest
+
+rfimp_470_new <- names(rfimp_470)
+rfimp_284_new <- names(rfimp_284)
+
+x<-intersect(rfimp_470_new,rfimp_284_new)
+#save same kmers 
+rfimp_all <- x
+
+#plot
+grid.newpage()
+venn <- draw.pairwise.venn(area1=50, area2=50,
+                           cross.area=length(rfimp_all),  
+                           category=c("rf-470","rf-284"),fill=c("green","deepskyblue"), 
+                           cex=1.3, cat.cex = 1.2, 
+                           cat.dist = 0.040, cat.pos = c(-35,35),
+                           ind = FALSE)
+
+grid.arrange(gTree(children = venn), 
+             top= paste("Random Forest - Common kmers between sets"))
+
+
+
+
+##Common kmers between methods OvA-RF
+#the common of rf for each of common of ova
+
+ova_rf_imp <-list()
+for(i in 1:8){
+  x<-intersect(ovaimp_all[[i]], rfimp_all)
+  ova_rf_imp[i] <- list(x) 
+  
+  #plot
+  grid.newpage()
+  venn <- draw.pairwise.venn(area1 = length(rfimp_all), 
+                             area2 = length(ovaimp_all[[i]]),
+                             cross.area=length(ova_rf_imp[[i]]),  
+                             category=c("Random Forest","One vs All"),
+                             fill=c("cyan","hotpink"), 
+                             cex=1, cat.cex = 1.2, 
+                             cat.dist = 0.040, cat.pos = c(-20,15), 
+                             ind = FALSE)
+  
+  grid.arrange(gTree(children = venn),
+               top= "Common kmers between Methods",
+               bottom = paste("One vs All -",names(ovaimp_all[i])))
+}
+#give names
+ova_rf_imp <- setNames(ova_rf_imp, names(ovaimp_all))
+ova_rf_imp
+
