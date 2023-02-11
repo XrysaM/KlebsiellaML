@@ -1,22 +1,17 @@
-#This is the code 
 
-#clean environment everytime so run what you need from the start
-#rm(list=ls()) 
-#rm(list=c())
-#& 
-#gc() #for cleaning
+##This is the code
+
+#here is the project step by step.
+
+#there is some extra code in the "testfile.R"
+#for parts that were usefull or an other way to do some of them
+
 
 #####
+#Data Exlporation
+
 library(readr)
-k_9_og <- read_csv("k_9_total_for_classification.csv") #.
-rm(k_9_og)   #call read_csv again if you want original(saves space)
-
-#k_9_test <- k_9[,-c(1:3)]     #keep only common_species_names and kmers
-k_9_test <- k_9_og[,-c(1:2,4)]   #keep only host_categories and kmers
-
-summary(k_9)
-str(k_9)
-View(k_9)
+k_9_og <- read_csv("k_9_total_for_classification.csv") 
 
 #NA's?
 any(is.na(k_9)) #is False == no NAs
@@ -24,15 +19,14 @@ any(is.na(k_9)) #is False == no NAs
 #which hosts
 unique(k_9[c(3,4)]) 
 
-#change fox name when host_categories is factor
-levels(k_9_fix$host_categories)[levels(k_9_fix$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
-levels(k_9_tent$host_categories)[levels(k_9_tent$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
+#keep only host_categories and kmers
+k_9_test <- k_9_og[,-c(1:2,4)]  
+#rm(k_9_og)   #call read_csv again if you want original(saves space)
 
 
 library(DataExplorer)
 plot_intro(fix)
 plot_bar(fix) 
-#plot_correlation(k_9_test) #too many var - 128gb
 
 #####
 #Boruta
@@ -60,6 +54,11 @@ host_categories <- k_9_test$host_categories
 k_9_tent <- cbind(host_categories, k_9_test[,c(boruta_signif)])
 k_9_fix <- cbind(host_categories, k_9_test[,c(boruta_no_Tent)])
 
+
+#change fox name when host_categories is factor
+levels(k_9_test$host_categories)[levels(k_9_test$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
+levels(k_9_fix$host_categories)[levels(k_9_fix$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
+levels(k_9_tent$host_categories)[levels(k_9_tent$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
 
 
 
@@ -146,7 +145,7 @@ best_trees
 
 ## final model for proximities using the best ntree and the best mtry
 model_rf <- randomForest(host_categories ~ ., 
-                         data=fix,
+                         data=k_9_fix,
                          ntree=best_trees,
                          proximity=TRUE, 
                          mtry=min_mtry)
@@ -154,6 +153,7 @@ model_rf
 
 #varimp
 rfimp_470 <- model_rf$importance[order(model_rf$importance[,1],decreasing=TRUE),][1:50]
+rfimp_470[1:5]
 
 #plot the varimp
 par(mar=c(5,7,4,1))
@@ -162,7 +162,8 @@ barplot(rfimp_470[1:20],horiz = TRUE,las=1,
         xlab="Mean Decrease Gini")
 
 
-#####
+
+#Dimensionality Reduction
 
 #MDS-plot - how the samples are related to each other
 #proximity matrix -> distance matrix
@@ -185,8 +186,6 @@ ggplot(data=mds.data, aes(x=X, y=Y,color=Host)) +
   xlab(paste("MDS1 - ", mds.var.per[1], "%", sep="")) +
   ylab(paste("MDS2 - ", mds.var.per[2], "%", sep="")) +
   ggtitle("MDS for Random Forest - 470")
-
-
 
 
 
@@ -401,7 +400,7 @@ for(i in 1:8){
 
 
 
-##Compare the variable importances to find 
+##Compare the variable importance to find 
 ##which kmers are the most important 
 
 # Load library
@@ -486,7 +485,7 @@ venn <- draw.pairwise.venn(area1=50, area2=50,
 grid.arrange(gTree(children = venn), 
              top= paste("Random Forest - Common kmers between sets"))
 
-
+rfimp_all
 
 
 ##Common kmers between methods OvA-RF

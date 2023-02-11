@@ -1,4 +1,17 @@
 #diafora tests
+
+#clean environment everytime so run what you need from the start
+#rm(list=ls()) 
+#rm(list=c())
+#& 
+#gc() #for cleaning
+
+
+summary(k_9)
+str(k_9)
+View(k_9)
+
+
 ########################
 #save and test to csv file
 
@@ -19,6 +32,7 @@ k_9_tent$host_categories <- as.factor(k_9_tent$host_categories)
 #change fox name when host_categories is factor
 levels(k_9_fix$host_categories)[levels(k_9_fix$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
 levels(k_9_tent$host_categories)[levels(k_9_tent$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
+levels(k_9_test$host_categories)[levels(k_9_test$host_categories) == 'grey-headed_flying_fox'] <- 'fox'
 
 #######
 #encoders
@@ -214,6 +228,7 @@ results
 
 library(caret)
 library("randomForest")
+library(ggplot2)
 control <- rfeControl(functions = rfFuncs, # random forest
                       method = "repeatedcv", # repeated cv
                       repeats = 5, # number of repeats
@@ -278,7 +293,7 @@ ggplot(data=feat_acc, aes(x=No_of_Variables, y=Kappa, group=Size_of_Subset))+
 
 #Accuracy boxplot
 ggplot(data=feat_acc, aes( x=Size_of_Subset, y=Accuracy))+
-  geom_boxplot() + 
+  geom_boxplot(lwd=1,aes(color=Size_of_Subset),show.legend = FALSE) + 
   geom_dotplot(binaxis='y', stackdir='center',dotsize=0.75,binwidth = 0.001)+
   theme_bw()+
   labs(caption = "470=after Boruta fix, \n 730=before Tentative fix")+
@@ -529,6 +544,27 @@ ggplot(data=feat_acc, aes(x=No_of_Variables, y=Accuracy, group=Size_of_Subset))+
 #rm(list= c("control", "x", "x_train", "inTrain", "y", "y_test","y_train"))
 
 
+testdataline <- feat_acc
+testdataline <- testdataline[c(seq(1,43, by=5), 43, 
+                               seq(44,112, by=5), 112, 
+                               170:178, 
+                               274:284, 
+                               389:399, 
+                               503:513),]
+#Plots 
+No_of_Variables=as.factor(testdataline$variables)
+Size_of_Subset=as.factor(testdataline$set)
+
+#Accuracy line for 1 of each subset
+ggplot(data=testdataline, aes(x=No_of_Variables, y=Accuracy, group=Size_of_Subset))+
+  geom_line(aes(color=Size_of_Subset),linewidth=1.5)+
+  geom_point()+
+  #scale_color_brewer(palette="Set1")+
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  theme_bw()+
+  labs(color = "Size of Dataset")+
+  labs(caption = "470=after Tentative fix, \n 730=before Tentative fix")+
+  ggtitle("Accuracy per number of Variables")
 
 ##############
 #temp 
