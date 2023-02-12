@@ -22,9 +22,14 @@ colnames(k_9_fix[,highlyCorrelated])
 #keep the rest of the data
 corr_data <- k_9_fix[,-highlyCorrelated]
 
+#dataset only correlation
+fix2 <- corr_data
 
 
 #variance 
+
+#check for variance in correlation dataset
+
 #find if features have zero variance
 var_data <- nearZeroVar(corr_data[,-c(1)], saveMetrics = TRUE)
 sapply(var_data, unique)
@@ -37,12 +42,35 @@ low_var <- names(var_data[which(var_data < 0.015)])
 #keep the rest
 fix <- corr_data[!corr_data %in% corr_data[low_var]]
 
+#dataset both
+fix1 <-fix
+
+
+#variance 
+
+#check for variance in original (boruta = 470) dataset
+
+#find if features have zero variance
+var_data <- nearZeroVar(k_9_fix[,-c(1)], saveMetrics = TRUE)
+sapply(var_data, unique)
+#no feature has repeating values
+
+#find low variance
+var_data <- sapply(k_9_fix[,-c(1)], var)
+#features with variance less than 0.015
+low_var <- names(var_data[which(var_data < 0.015)])
+#keep the rest
+fixnew <- k_9_fix[!k_9_fix %in% k_9_fix[low_var]]
+
+#dataset only variance
+fix3 <- fixnew
 
 ###########
 
 #Recursive Feature Elimination (RFE)
 #use this to find best subset of features 
-#given the output of boruta - 470 vs 730
+#given the output of boruta - 470 and correlation , variance and both
+
 
 library(caret)
 library("randomForest")
@@ -52,7 +80,7 @@ control <- rfeControl(functions = rfFuncs, # random forest
                       number = 10) # number of folds
 
 # Features
-a <- list(k_9_fix,fix1,fix2,fix3)#dokimase na to baleis kateu8eian
+a <- list(k_9_fix,fix1,fix2,fix3)
 b <- 1 
 feat_acc <- data.frame(subset    = numeric(), 
                        variables = numeric(),
@@ -132,6 +160,8 @@ library(ggplot2)
 library(cowplot)
 library(randomForest)
 set.seed(42)
+
+#this is the 284 variables dataset - fix
 
 #first try with default parameters
 fix$host_categories <- as.factor(fix$host_categories)
